@@ -123,7 +123,32 @@ export function createOrder(
 }
 ```
 
-### 4.2 配送日程検索関数（searchDeliveries）
+### 4.2 状態遷移関数
+
+```typescript
+export const placeOrder = (order: Order): Result<Order> => {
+  if (order.status.type !== "draft") {
+    return {
+      success: false,
+      error: "下書き状態の注文のみ確定できます"
+    };
+  }
+
+  const result = OrderSchema.safeParse({
+    ...order,
+    status: { type: "placed" as const, placedAt: new Date() },
+    updatedAt: new Date()
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error.errors[0].message };
+  }
+
+  return { success: true, value: result.data };
+};
+```
+
+### 4.3 配送日程検索関数（searchDeliveries）
 
 ```typescript
 export interface DeliverySearchCriteria {
