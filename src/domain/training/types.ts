@@ -13,6 +13,12 @@ export enum TrainingLevel {
   ADVANCED = 'ADVANCED'
 }
 
+export enum TrainingStatus {
+  DRAFT = 'DRAFT',
+  OPEN = 'OPEN',
+  COMPLETED = 'COMPLETED'
+}
+
 export const TrainingSchema = z.object({
   id: z.string().uuid(),
   title: z.string().min(1, { message: 'タイトルは必須です' }),
@@ -22,6 +28,7 @@ export const TrainingSchema = z.object({
   capacity: z.number().positive({ message: '定員は1以上である必要があります' }),
   level: z.nativeEnum(TrainingLevel),
   price: z.number().nonnegative({ message: '価格は0以上である必要があります' }),
+  status: z.nativeEnum(TrainingStatus).default(TrainingStatus.DRAFT),
   createdAt: z.date(),
   updatedAt: z.date()
 });
@@ -49,6 +56,7 @@ export function createTraining(input: CreateTrainingInput): Result<Training> {
     capacity: input.capacity,
     level: input.level,
     price: input.price,
+    status: TrainingStatus.DRAFT,
     createdAt: now,
     updatedAt: now
   };
@@ -61,6 +69,52 @@ export function createTraining(input: CreateTrainingInput): Result<Training> {
     };
   }
 
+  return {
+    success: true,
+    value: result.data
+  };
+}
+
+export function updateTrainingStatus(training: Training, newStatus: TrainingStatus): Result<Training> {
+  // 同じ状態への更新は何もせずに成功を返す
+  if (training.status === newStatus) {
+    return {
+      success: true,
+      value: training
+    };
+  }
+  
+  // 状態遷移の検証
+  if (training.status === TrainingStatus.DRAFT && newStatus === TrainingStatus.COMPLETED) {
+    return {
+      success: false,
+      error: 'ドラフト状態から開催済み状態に直接更新することはできません'
+    };
+  }
+  
+  if (training.status === TrainingStatus.COMPLETED) {
+    return {
+      success: false,
+      error: '開催済み状態から変更することはできません'
+    };
+  }
+  
+  // 更新処理
+  const updatedTraining = {
+    ...training,
+    status: newStatus,
+    updatedAt: new Date()
+  };
+  
+  // スキーマ検証
+  const result = TrainingSchema.safeParse(updatedTraining);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+  
   return {
     success: true,
     value: result.data
