@@ -8,7 +8,7 @@
 - npm run test の失敗理由を解説して
 - npm run test が Greenになるように修正して
 - 現在のフォルダー内容や git log のコミットメッセージをもとに CLAUDE.md のアップデート案を提案して
-
+- 1_SPRINT_BACKLOG.md, 2_SPRINT_BACKLOG.mdのファイルの受け入れ条件に沿ってテストされている？境界値などテスト技法を活用しながらも評価して
 
 # 効果的な指示方法（CLAUDEが生成した案）
 

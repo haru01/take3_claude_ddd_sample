@@ -20,6 +20,13 @@ Eコマースシステムの注文管理として、注文の作成と配送日�
 - **注文の作成**: 顧客ID、商品リスト、配送先情報を含む注文の作成
 - **配送日程の検索**: 日付範囲による配送予定の検索
 
+#### 研修管理ドメイン（Training Domain）
+社内研修の管理システムとして、研修情報の登録と検索機能を提供します。
+
+- **研修情報の登録**: タイトル、説明、日時、場所、定員などを含む研修情報の登録
+- **研修の検索**: 日付範囲や状態による研修の検索
+- **研修状態管理**: ドラフト、募集中、開催済み、中止などの状態遷移の管理
+
 ### 主な特徴
 - **関数型プログラミング**: 不変性と純粋関数による実装
 - **型駆動設計**: ブランド型とZodスキーマによる厳密な型定義
@@ -32,24 +39,35 @@ Eコマースシステムの注文管理として、注文の作成と配送日�
 claude_ddd_sample/
 ├── src/
 │   ├── domain/                    # ドメイン層
-│   │   ├── order/                # 注文ドメイン
-│   │   │   └── types.ts          # 型定義とファクトリ関数
-│   │   └── shipping/             # 配送ドメイン
-│   │       └── functions.ts      # 配送スケジュール検索
-│   ├── shared/                   # 共通ユーティリティ
-│   │   └── types.ts              # UUID、Result型など
-│   └── example.ts                # 実行可能なサンプルコード
-├── tests/                        # テストコード
+│   │   ├── order/                 # 注文ドメイン
+│   │   │   ├── types.ts           # 型定義
+│   │   │   └── functions.ts       # ファクトリ関数、状態遷移関数
+│   │   ├── shipping/              # 配送ドメイン
+│   │   │   ├── types.ts           # 型定義
+│   │   │   └── functions.ts       # 検索機能、状態遷移関数
+│   │   └── training/              # 研修ドメイン
+│   │       ├── types.ts           # 型定義
+│   │       └── functions.ts       # 検索機能、状態遷移関数
+│   ├── shared/                    # 共通ユーティリティ
+│   │   └── types.ts               # UUID、Result型など
+│   └── example.ts                 # 実行可能なサンプルコード
+├── tests/                         # テストコード
 │   └── domain/
 │       ├── order/
-│       │   └── types.test.ts     # 注文ドメインのテスト
-│       └── shipping/
-│           └── functions.test.ts # 配送機能のテスト
-├── package.json                  # 依存関係とスクリプト
-├── tsconfig.json                 # TypeScript設定
-├── SPRINT_BACKLOG.md            # 開発ストーリー
-├── USER_STORIES.md              # ユーザーストーリー
-└── CLAUDE.md                    # プロジェクト説明（v1）
+│       │   ├── types.test.ts      # 注文ドメイン型のテスト
+│       │   └── functions.test.ts  # 注文機能のテスト
+│       ├── shipping/
+│       │   ├── types.test.ts      # 配送ドメイン型のテスト
+│       │   └── functions.test.ts  # 配送機能のテスト
+│       └── training/
+│           ├── types.test.ts      # 研修ドメイン型のテスト
+│           └── functions.test.ts  # 研修検索機能のテスト
+├── package.json                   # 依存関係とスクリプト
+├── tsconfig.json                  # TypeScript設定
+├── doc/
+│   ├── USER_STORIES.md           # ユーザーストーリー
+│   └── SPRINT_BACKLOG.md         # 開発ストーリー
+└── CLAUDE.md                     # プロジェクト説明
 ```
 
 ## 3. 型駆動設計の実例
@@ -86,11 +104,68 @@ export const OrderSchema = z.object({
 export type Order = z.infer<typeof OrderSchema>;
 ```
 
-## 4. ドメインロジックの実装例
-
-### 4.1 注文作成関数（createOrder）
+### 3.3 代数的データ型による状態表現
 
 ```typescript
+// src/domain/shipping/types.ts
+// 配送状態を代数的データ型として定義
+export type ShippingStatus =
+  | { type: 'PENDING' }
+  | { type: 'SHIPPED'; shippedAt: Date; trackingCode: string }
+  | { type: 'DELIVERED'; deliveredAt: Date }
+  | { type: 'FAILED'; failedAt: Date; reason: string };
+
+// 状態の型ガードを定義
+export const isStatusPending = (status: ShippingStatus): status is { type: 'PENDING' } => 
+  status.type === 'PENDING';
+
+export const isStatusShipped = (status: ShippingStatus): status is { type: 'SHIPPED'; shippedAt: Date; trackingCode: string } => 
+  status.type === 'SHIPPED';
+
+export const isStatusDelivered = (status: ShippingStatus): status is { type: 'DELIVERED'; deliveredAt: Date } => 
+  status.type === 'DELIVERED';
+
+export const isStatusFailed = (status: ShippingStatus): status is { type: 'FAILED'; failedAt: Date; reason: string } => 
+  status.type === 'FAILED';
+
+// バリデーション用のZodスキーマを定義
+const ShippingStatusSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('PENDING') }),
+  z.object({ 
+    type: z.literal('SHIPPED'), 
+    shippedAt: z.date(),
+    trackingCode: z.string().min(1, { message: '追跡コードは必須です' })
+  }),
+  z.object({ 
+    type: z.literal('DELIVERED'), 
+    deliveredAt: z.date() 
+  }),
+  z.object({ 
+    type: z.literal('FAILED'), 
+    failedAt: z.date(),
+    reason: z.string().min(1, { message: '失敗理由は必須です' })
+  })
+]);
+
+// src/domain/shipping/functions.ts
+// 状態オブジェクトを生成するためのヘルパー関数
+export const ShippingStatusFactory = {
+  pending: (): ShippingStatus => ({ type: 'PENDING' }),
+  shipped: (shippedAt: Date, trackingCode: string): ShippingStatus => 
+    ({ type: 'SHIPPED', shippedAt, trackingCode }),
+  delivered: (deliveredAt: Date): ShippingStatus => 
+    ({ type: 'DELIVERED', deliveredAt }),
+  failed: (failedAt: Date, reason: string): ShippingStatus => 
+    ({ type: 'FAILED', failedAt, reason })
+};
+```
+
+## 4. ドメインロジックの実装例
+
+### 4.1 注文作成関数
+
+```typescript
+// src/domain/order/functions.ts
 export function createOrder(
   customerId: CustomerId,
   items: OrderItem[],
@@ -126,6 +201,7 @@ export function createOrder(
 ### 4.2 状態遷移関数
 
 ```typescript
+// src/domain/order/functions.ts
 export const placeOrder = (order: Order): Result<Order> => {
   if (order.status.type !== "draft") {
     return {
@@ -148,9 +224,293 @@ export const placeOrder = (order: Order): Result<Order> => {
 };
 ```
 
-### 4.3 配送日程検索関数（searchDeliveries）
+### 4.3 配送状態遷移関数
 
 ```typescript
+// src/domain/shipping/functions.ts
+export function shipOrder(
+  orderShipping: OrderShipping, 
+  trackingCode: string
+): Result<OrderShipping> {
+  // 状態遷移チェック - 保留中状態からのみ発送可能
+  if (!isStatusPending(orderShipping.status)) {
+    return {
+      success: false,
+      error: '保留中状態の配送のみ発送処理できます'
+    };
+  }
+
+  // トラッキングコードの必須チェック
+  if (!trackingCode) {
+    return {
+      success: false,
+      error: '追跡コードは必須です'
+    };
+  }
+
+  // 発送状態に更新
+  const now = new Date();
+  const updatedShipping = {
+    ...orderShipping,
+    status: ShippingStatusFactory.shipped(now, trackingCode),
+    updatedAt: now
+  };
+
+  // スキーマ検証
+  const result = OrderShippingSchema.safeParse(updatedShipping);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+
+  return {
+    success: true,
+    value: result.data
+  };
+}
+
+export function markAsDelivered(orderShipping: OrderShipping): Result<OrderShipping> {
+  // 状態遷移チェック - 発送済状態からのみ配達完了可能
+  if (!isStatusShipped(orderShipping.status)) {
+    return {
+      success: false,
+      error: '発送済状態の配送のみ配達完了にできます'
+    };
+  }
+
+  // 配達完了状態に更新
+  const now = new Date();
+  const updatedShipping = {
+    ...orderShipping,
+    status: ShippingStatusFactory.delivered(now),
+    updatedAt: now
+  };
+
+  // スキーマ検証
+  const result = OrderShippingSchema.safeParse(updatedShipping);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+
+  return {
+    success: true,
+    value: result.data
+  };
+}
+
+export function markAsFailed(
+  orderShipping: OrderShipping, 
+  reason: string
+): Result<OrderShipping> {
+  // 失敗状態に遷移できるのは保留中または発送済状態のみ
+  if (!isStatusPending(orderShipping.status) && !isStatusShipped(orderShipping.status)) {
+    return {
+      success: false,
+      error: '保留中または発送済状態の配送のみ失敗状態にできます'
+    };
+  }
+
+  // 失敗理由の必須チェック
+  if (!reason) {
+    return {
+      success: false,
+      error: '失敗理由は必須です'
+    };
+  }
+
+  // 失敗状態に更新
+  const now = new Date();
+  const updatedShipping = {
+    ...orderShipping,
+    status: ShippingStatusFactory.failed(now, reason),
+    updatedAt: now
+  };
+
+  // スキーマ検証
+  const result = OrderShippingSchema.safeParse(updatedShipping);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+
+  return {
+    success: true,
+    value: result.data
+  };
+}
+```
+
+### 4.4 研修状態管理
+
+```typescript
+// src/domain/training/types.ts
+// 研修状態を代数的データ型として定義
+export type TrainingStatus =
+  | { type: 'DRAFT' }
+  | { type: 'OPEN' }
+  | { type: 'COMPLETED' }
+  | { type: 'CANCELED'; reason: string };
+
+// 状態の型ガードを定義
+export const isStatusDraft = (status: TrainingStatus): status is { type: 'DRAFT' } => 
+  status.type === 'DRAFT';
+
+export const isStatusOpen = (status: TrainingStatus): status is { type: 'OPEN' } => 
+  status.type === 'OPEN';
+
+export const isStatusCompleted = (status: TrainingStatus): status is { type: 'COMPLETED' } => 
+  status.type === 'COMPLETED';
+
+export const isStatusCanceled = (status: TrainingStatus): status is { type: 'CANCELED'; reason: string } => 
+  status.type === 'CANCELED';
+
+// バリデーション用のZodスキーマを定義
+const TrainingStatusSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('DRAFT') }),
+  z.object({ type: z.literal('OPEN') }),
+  z.object({ type: z.literal('COMPLETED') }),
+  z.object({ 
+    type: z.literal('CANCELED'), 
+    reason: z.string().min(1, { message: '中止理由は必須です' })
+      .min(5, { message: '中止理由は5文字以上である必要があります' })
+  })
+]);
+
+// src/domain/training/functions.ts
+// 状態オブジェクトを生成するためのヘルパー関数
+export const TrainingStatusFactory = {
+  draft: (): TrainingStatus => ({ type: 'DRAFT' }),
+  open: (): TrainingStatus => ({ type: 'OPEN' }),
+  completed: (): TrainingStatus => ({ type: 'COMPLETED' }),
+  canceled: (reason: string): TrainingStatus => ({ type: 'CANCELED', reason })
+};
+
+export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'OPEN' | 'COMPLETED'): Result<Training> {
+  const currentStatus = training.status.type;
+  
+  // 同じ状態への更新は何もせずに成功を返す
+  if (currentStatus === newStatus) {
+    return {
+      success: true,
+      value: training
+    };
+  }
+  
+  // 状態遷移の検証
+  if (currentStatus === 'DRAFT' && newStatus === 'COMPLETED') {
+    return {
+      success: false,
+      error: 'ドラフト状態から開催済み状態に直接更新することはできません'
+    };
+  }
+  
+  if (currentStatus === 'COMPLETED') {
+    return {
+      success: false,
+      error: '開催済み状態から変更することはできません'
+    };
+  }
+  
+  if (currentStatus === 'CANCELED') {
+    return {
+      success: false,
+      error: '中止状態の研修は変更できません'
+    };
+  }
+  
+  // 新しい状態オブジェクトを生成
+  let updatedStatus: TrainingStatus;
+  
+  switch (newStatus) {
+    case 'DRAFT':
+      updatedStatus = TrainingStatusFactory.draft();
+      break;
+    case 'OPEN':
+      updatedStatus = TrainingStatusFactory.open();
+      break;
+    case 'COMPLETED':
+      updatedStatus = TrainingStatusFactory.completed();
+      break;
+    default:
+      return {
+        success: false,
+        error: '不正な状態が指定されました'
+      };
+  }
+  
+  // 更新処理
+  const updatedTraining = {
+    ...training,
+    status: updatedStatus,
+    updatedAt: new Date()
+  };
+  
+  // スキーマ検証
+  const result = TrainingSchema.safeParse(updatedTraining);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+  
+  return {
+    success: true,
+    value: result.data
+  };
+}
+
+export function cancelTraining(training: Training, reason: string): Result<Training> {
+  // 状態チェック
+  if (training.status.type === 'COMPLETED') {
+    return {
+      success: false,
+      error: '開催済み状態の研修は中止にできません'
+    };
+  }
+  
+  if (training.status.type === 'CANCELED') {
+    return {
+      success: false,
+      error: 'すでに中止済みの研修です'
+    };
+  }
+  
+  // 中止処理
+  const now = new Date();
+  const canceledTraining = {
+    ...training,
+    status: TrainingStatusFactory.canceled(reason),
+    updatedAt: now
+  };
+  
+  // スキーマ検証
+  const result = TrainingSchema.safeParse(canceledTraining);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+  
+  return {
+    success: true,
+    value: result.data
+  };
+}
+```
+
+### 4.5 検索関数
+
+```typescript
+// src/domain/shipping/functions.ts
 export interface DeliverySearchCriteria {
   startDate: Date;
   endDate: Date;
@@ -165,6 +525,31 @@ export function searchDeliveries(
     return deliveryDate >= startOfDay(criteria.startDate) &&
            deliveryDate <= endOfDay(criteria.endDate);
   });
+}
+
+// src/domain/training/functions.ts
+export interface SearchTrainingCriteria {
+  startDate: Date;
+  endDate: Date;
+}
+
+export function searchTrainings(
+  trainings: Training[],
+  criteria: SearchTrainingCriteria
+): Training[] {
+  // 日付の妥当性チェック
+  if (criteria.startDate > criteria.endDate) {
+    return [];
+  }
+
+  // フィルタリングと日付順のソート
+  return trainings
+    .filter(training => {
+      const trainingDate = training.date;
+      return trainingDate >= startOfDay(criteria.startDate) &&
+             trainingDate <= endOfDay(criteria.endDate);
+    })
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 ```
 
@@ -196,32 +581,147 @@ describe('createOrder', () => {
 });
 ```
 
-#### 配送日程検索のテスト例
+#### 配送状態遷移のテスト例
 
 ```typescript
-describe('searchDeliveries', () => {
-  it('日付範囲で配送予定を検索できる', () => {
+describe('shipOrder', () => {
+  it('保留中の配送を発送状態に更新できる', () => {
+    // 正常系テスト - ステータス変更
+  });
+
+  it('追跡コードのない発送はエラーになる', () => {
+    // 必須項目検証テスト
+  });
+
+  it('すでに発送済みの配送は再度発送処理できない', () => {
+    // 状態遷移の制約テスト
+  });
+
+  it('失敗状態の配送は発送処理できない', () => {
+    // 状態遷移の制約テスト
+  });
+});
+
+describe('markAsDelivered', () => {
+  it('発送済みの配送を配達完了状態に更新できる', () => {
+    // 正常系テスト - ステータス変更
+  });
+
+  it('保留中の配送は配達完了にできない', () => {
+    // 状態遷移の制約テスト  
+  });
+
+  it('すでに配達完了の配送を再度完了処理できない', () => {
+    // 状態遷移の制約テスト
+  });
+});
+```
+
+#### 研修状態遷移のテスト例
+
+```typescript
+describe('updateTrainingStatus', () => {
+  it('研修状態をドラフトから募集中に更新できる', () => {
+    // 正常系テスト - ステータス変更
+    expect(isStatusDraft(training.status)).toBe(true);
+    
+    const result = updateTrainingStatus(training, 'OPEN');
+    
+    expect(isSuccess(result)).toBe(true);
+    if (isSuccess(result)) {
+      const updatedTraining = result.value;
+      expect(isStatusOpen(updatedTraining.status)).toBe(true);
+      expect(updatedTraining.updatedAt.getTime()).toBeGreaterThan(training.updatedAt.getTime());
+    }
+  });
+
+  it('研修状態をドラフトから開催済みに直接更新することはできない', () => {
+    // 状態遷移の制約テスト
+    const result = updateTrainingStatus(training, 'COMPLETED');
+    
+    expect(isError(result)).toBe(true);
+    if (isError(result)) {
+      expect(result.error).toBe('ドラフト状態から開催済み状態に直接更新することはできません');
+    }
+  });
+});
+
+describe('cancelTraining', () => {
+  it('ドラフト状態の研修を中止にできる', () => {
+    // 正常系テスト - 中止処理
+    expect(isStatusDraft(training.status)).toBe(true);
+    
+    const result = cancelTraining(training, '講師の都合により中止');
+    
+    expect(isSuccess(result)).toBe(true);
+    if (isSuccess(result)) {
+      const canceledTraining = result.value;
+      expect(isStatusCanceled(canceledTraining.status)).toBe(true);
+      
+      // 中止状態は中止理由を持つことを確認
+      if (isStatusCanceled(canceledTraining.status)) {
+        expect(canceledTraining.status.reason).toBe('講師の都合により中止');
+      }
+    }
+  });
+
+  it('中止理由が短すぎる場合はエラーになる', () => {
+    // バリデーションテスト
+    const result = cancelTraining(training, '理由');
+    
+    expect(isError(result)).toBe(true);
+    if (isError(result)) {
+      expect(result.error).toBe('中止理由は5文字以上である必要があります');
+    }
+  });
+});
+```
+
+#### 検索機能のテスト例
+
+```typescript
+describe('searchTrainings', () => {
+  it('日付範囲で研修を検索できる', () => {
     // 正常系テスト
+    const searchCriteria: SearchTrainingCriteria = {
+      startDate: new Date('2025-05-01'),
+      endDate: new Date('2025-06-30')
+    };
+
+    const result = searchTrainings(trainings, searchCriteria);
+
+    expect(result).toHaveLength(3);
+    expect(result.map(t => t.title)).toEqual([
+      '5月15日の研修',
+      '6月1日の研修',
+      '6月15日の研修'
+    ]);
   });
 
-  it('日付範囲外の配送は検索結果に含まれない', () => {
+  it('日付範囲外の研修は含まれない', () => {
     // 境界値外のテスト
+    const searchCriteria: SearchTrainingCriteria = {
+      startDate: new Date('2025-05-01'),
+      endDate: new Date('2025-05-31')
+    };
+
+    const result = searchTrainings(trainings, searchCriteria);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.title).toBe('5月15日の研修');
   });
 
-  it('検索範囲の境界日付の配送も含まれる', () => {
-    // 境界値のテスト
-  });
-
-  it('空の注文リストの場合、空の結果が返る', () => {
-    // エッジケース
-  });
-
-  it('開始日と終了日が同じ場合、その日の配送のみ検索される', () => {
+  it('開始日と終了日が同じ場合、その日の研修のみ検索される', () => {
     // 特殊ケース
-  });
+    const searchCriteria: SearchTrainingCriteria = {
+      startDate: new Date('2025-06-01'),
+      endDate: new Date('2025-06-01')
+    };
 
-  it('開始日が終了日より後の場合、空の結果が返る', () => {
-    // 異常系
+    const result = searchTrainings(trainings, searchCriteria);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.title).toBe('6月1日の研修');
   });
 });
 ```
