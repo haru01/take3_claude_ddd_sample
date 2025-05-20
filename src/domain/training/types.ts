@@ -185,14 +185,6 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
 }
 
 export function cancelTraining(training: Training, reason: string): Result<Training> {
-  // 空文字チェックを明示的に行う
-  if (!reason) {
-    return {
-      success: false,
-      error: '中止理由は必須です'
-    };
-  }
-  
   // 状態チェック
   if (training.status.type === 'COMPLETED') {
     return {
