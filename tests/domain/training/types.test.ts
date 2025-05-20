@@ -1,4 +1,6 @@
-import { createTraining, TrainingLevel } from '../../../src/domain/training/types';
+import { TrainingLevel } from '../../../src/domain/training/types';
+import { createTraining } from '../../../src/domain/training/functions';
+
 import { isSuccess, isError } from '../../../src/shared/types';
 
 describe('createTraining', () => {
@@ -167,7 +169,7 @@ describe('createTraining', () => {
 
   it('すべての研修レベルで正常に作成できる', () => {
     const levels = [TrainingLevel.BEGINNER, TrainingLevel.INTERMEDIATE, TrainingLevel.ADVANCED];
-    
+
     levels.forEach(level => {
       const result = createTraining({
         title: 'タイトル',

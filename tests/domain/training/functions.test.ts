@@ -1,5 +1,5 @@
-import { searchTrainings, SearchTrainingCriteria } from '../../../src/domain/training/functions';
-import { createTraining, TrainingLevel, Training } from '../../../src/domain/training/types';
+import { createTraining, searchTrainings, SearchTrainingCriteria } from '../../../src/domain/training/functions';
+import { TrainingLevel, Training } from '../../../src/domain/training/types';
 import { isSuccess } from '../../../src/shared/types';
 
 describe('searchTrainings', () => {
@@ -8,7 +8,7 @@ describe('searchTrainings', () => {
   beforeEach(() => {
     // Arrange: 研修データのセットアップ
     trainings = [];
-    
+
     const trainingData = [
       {
         id: 'training-1',
@@ -55,7 +55,7 @@ describe('searchTrainings', () => {
     trainingData.forEach(data => {
       const result = createTraining(data);
       if (isSuccess(result)) {
-        trainings.push(result.value);
+        trainings.push(result.value as Training);
       }
     });
   });

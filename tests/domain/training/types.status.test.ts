@@ -1,4 +1,6 @@
-import { createTraining, updateTrainingStatus, TrainingLevel, isStatusDraft, isStatusOpen, isStatusCompleted, Training } from '../../../src/domain/training/types';
+import { TrainingLevel, isStatusDraft, isStatusOpen, isStatusCompleted, Training } from '../../../src/domain/training/types';
+import { createTraining, updateTrainingStatus } from '../../../src/domain/training/functions';
+
 import { isSuccess, isError } from '../../../src/shared/types';
 
 describe('updateTrainingStatus', () => {

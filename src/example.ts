@@ -1,6 +1,7 @@
 // 研修情報管理の実装例
 import { searchTrainings, SearchTrainingCriteria } from './domain/training/functions';
-import { createTraining, TrainingLevel, Training } from './domain/training/types';
+import { TrainingLevel, Training } from './domain/training/types';
+import { createTraining } from './domain/training/functions';
 import { isSuccess } from './shared/types';
 
 console.log('=== 研修受付予約システム サンプル ===\n');
