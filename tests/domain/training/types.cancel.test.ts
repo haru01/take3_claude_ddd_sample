@@ -1,7 +1,16 @@
-import { createTraining, cancelTraining, TrainingLevel, TrainingStatus, Training } from '../../../src/domain/training/types';
+import { createTraining, cancelTraining, TrainingLevel, TrainingStatusFactory, isStatusDraft, isStatusCanceled, Training } from '../../../src/domain/training/types';
 import { isSuccess, isError } from '../../../src/shared/types';
 
 describe('cancelTraining', () => {
+  // テスト内で時間操作を行うためのセットアップ
+  beforeAll(() => {
+    jest.useFakeTimers();
+  });
+
+  afterAll(() => {
+    jest.useRealTimers();
+  });
+  
   let training: Training;
 
   beforeEach(() => {
@@ -25,16 +34,24 @@ describe('cancelTraining', () => {
 
   it('ドラフト状態の研修を中止にできる', () => {
     // 新規作成時はドラフト状態であることを確認
-    expect(training.status).toBe(TrainingStatus.DRAFT);
+    expect(isStatusDraft(training.status)).toBe(true);
 
+    // 更新日時が変わるように少し待機
+    jest.advanceTimersByTime(1000);
+    
     const result = cancelTraining(training, '講師の都合により中止');
     
     expect(isSuccess(result)).toBe(true);
     if (isSuccess(result)) {
       const canceledTraining = result.value;
-      expect(canceledTraining.status).toBe(TrainingStatus.CANCELED);
-      expect(canceledTraining.cancelReason).toBe('講師の都合により中止');
-      expect(canceledTraining.updatedAt).not.toEqual(training.updatedAt);
+      expect(isStatusCanceled(canceledTraining.status)).toBe(true);
+      
+      // 中止状態は中止理由を持つことを確認
+      if (isStatusCanceled(canceledTraining.status)) {
+        expect(canceledTraining.status.reason).toBe('講師の都合により中止');
+      }
+      
+      expect(canceledTraining.updatedAt.getTime()).toBeGreaterThan(training.updatedAt.getTime());
     }
   });
 
@@ -42,17 +59,25 @@ describe('cancelTraining', () => {
     // まずドラフトから募集中に更新
     const openTraining = {
       ...training,
-      status: TrainingStatus.OPEN
+      status: TrainingStatusFactory.open()
     };
+    
+    // 更新日時が変わるように少し待機
+    jest.advanceTimersByTime(1000);
     
     const result = cancelTraining(openTraining, '参加者が最小開催人数に達しなかったため');
     
     expect(isSuccess(result)).toBe(true);
     if (isSuccess(result)) {
       const canceledTraining = result.value;
-      expect(canceledTraining.status).toBe(TrainingStatus.CANCELED);
-      expect(canceledTraining.cancelReason).toBe('参加者が最小開催人数に達しなかったため');
-      expect(canceledTraining.updatedAt).not.toEqual(openTraining.updatedAt);
+      expect(isStatusCanceled(canceledTraining.status)).toBe(true);
+      
+      // 中止状態は中止理由を持つことを確認
+      if (isStatusCanceled(canceledTraining.status)) {
+        expect(canceledTraining.status.reason).toBe('参加者が最小開催人数に達しなかったため');
+      }
+      
+      expect(canceledTraining.updatedAt.getTime()).toBeGreaterThan(openTraining.updatedAt.getTime());
     }
   });
 
@@ -78,7 +103,7 @@ describe('cancelTraining', () => {
     // 開催済み状態の研修を作成
     const completedTraining = {
       ...training,
-      status: TrainingStatus.COMPLETED
+      status: TrainingStatusFactory.completed()
     };
     
     const result = cancelTraining(completedTraining, '講師の都合により中止');

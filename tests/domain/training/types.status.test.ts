@@ -1,4 +1,4 @@
-import { createTraining, updateTrainingStatus, TrainingLevel, TrainingStatus, Training } from '../../../src/domain/training/types';
+import { createTraining, updateTrainingStatus, TrainingLevel, isStatusDraft, isStatusOpen, isStatusCompleted, Training } from '../../../src/domain/training/types';
 import { isSuccess, isError } from '../../../src/shared/types';
 
 describe('updateTrainingStatus', () => {
@@ -33,23 +33,23 @@ describe('updateTrainingStatus', () => {
 
   it('研修状態をドラフトから募集中に更新できる', () => {
     // 新規作成時はドラフト状態であることを確認
-    expect(training.status).toBe(TrainingStatus.DRAFT);
+    expect(isStatusDraft(training.status)).toBe(true);
 
     // テスト中に確実にupdatedAtが変わるよう少し待機
     jest.advanceTimersByTime(100);
-    const result = updateTrainingStatus(training, TrainingStatus.OPEN);
+    const result = updateTrainingStatus(training, 'OPEN');
 
     expect(isSuccess(result)).toBe(true);
     if (isSuccess(result)) {
       const updatedTraining = result.value;
-      expect(updatedTraining.status).toBe(TrainingStatus.OPEN);
+      expect(isStatusOpen(updatedTraining.status)).toBe(true);
       expect(updatedTraining.updatedAt.getTime()).toBeGreaterThan(training.updatedAt.getTime());
     }
   });
 
   it('研修状態を募集中から開催済みに更新できる', () => {
     // まずドラフトから募集中に更新
-    const openResult = updateTrainingStatus(training, TrainingStatus.OPEN);
+    const openResult = updateTrainingStatus(training, 'OPEN');
     expect(isSuccess(openResult)).toBe(true);
 
     // 次に募集中から開催済みに更新
@@ -59,19 +59,19 @@ describe('updateTrainingStatus', () => {
       // テスト中に確実にupdatedAtが変わるよう少し待機
       jest.advanceTimersByTime(100);
 
-      const completedResult = updateTrainingStatus(openTraining, TrainingStatus.COMPLETED);
+      const completedResult = updateTrainingStatus(openTraining, 'COMPLETED');
       expect(isSuccess(completedResult)).toBe(true);
 
       if (isSuccess(completedResult)) {
         const completedTraining = completedResult.value;
-        expect(completedTraining.status).toBe(TrainingStatus.COMPLETED);
+        expect(isStatusCompleted(completedTraining.status)).toBe(true);
         expect(completedTraining.updatedAt.getTime()).toBeGreaterThan(openTraining.updatedAt.getTime());
       }
     }
   });
 
   it('研修状態をドラフトから開催済みに直接更新することはできない', () => {
-    const result = updateTrainingStatus(training, TrainingStatus.COMPLETED);
+    const result = updateTrainingStatus(training, 'COMPLETED');
 
     expect(isError(result)).toBe(true);
     if (isError(result)) {
@@ -81,26 +81,26 @@ describe('updateTrainingStatus', () => {
 
   it('研修状態を開催済みからドラフトや募集中に戻すことはできない', () => {
     // ドラフト → 募集中 → 開催済みと更新
-    const openResult = updateTrainingStatus(training, TrainingStatus.OPEN);
+    const openResult = updateTrainingStatus(training, 'OPEN');
     expect(isSuccess(openResult)).toBe(true);
 
     if (isSuccess(openResult)) {
       const openTraining = openResult.value;
-      const completedResult = updateTrainingStatus(openTraining, TrainingStatus.COMPLETED);
+      const completedResult = updateTrainingStatus(openTraining, 'COMPLETED');
       expect(isSuccess(completedResult)).toBe(true);
 
       if (isSuccess(completedResult)) {
         const completedTraining = completedResult.value;
 
         // 開催済み → ドラフトは不可
-        const toDraftResult = updateTrainingStatus(completedTraining, TrainingStatus.DRAFT);
+        const toDraftResult = updateTrainingStatus(completedTraining, 'DRAFT');
         expect(isError(toDraftResult)).toBe(true);
         if (isError(toDraftResult)) {
           expect(toDraftResult.error).toBe('開催済み状態から変更することはできません');
         }
 
         // 開催済み → 募集中も不可
-        const toOpenResult = updateTrainingStatus(completedTraining, TrainingStatus.OPEN);
+        const toOpenResult = updateTrainingStatus(completedTraining, 'OPEN');
         expect(isError(toOpenResult)).toBe(true);
         if (isError(toOpenResult)) {
           expect(toOpenResult.error).toBe('開催済み状態から変更することはできません');
@@ -114,12 +114,12 @@ describe('updateTrainingStatus', () => {
     const originalUpdatedAt = training.updatedAt;
 
     // ドラフトからドラフトへの更新
-    const result = updateTrainingStatus(training, TrainingStatus.DRAFT);
+    const result = updateTrainingStatus(training, 'DRAFT');
 
     expect(isSuccess(result)).toBe(true);
     if (isSuccess(result)) {
       const updatedTraining = result.value;
-      expect(updatedTraining.status).toBe(TrainingStatus.DRAFT);
+      expect(isStatusDraft(updatedTraining.status)).toBe(true);
       // 更新日時は変わらないことを確認
       expect(updatedTraining.updatedAt).toEqual(originalUpdatedAt);
     }
