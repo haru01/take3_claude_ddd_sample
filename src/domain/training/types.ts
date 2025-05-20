@@ -16,7 +16,8 @@ export enum TrainingLevel {
 export enum TrainingStatus {
   DRAFT = 'DRAFT',
   OPEN = 'OPEN',
-  COMPLETED = 'COMPLETED'
+  COMPLETED = 'COMPLETED',
+  CANCELED = 'CANCELED'
 }
 
 export const TrainingSchema = z.object({
@@ -29,6 +30,7 @@ export const TrainingSchema = z.object({
   level: z.nativeEnum(TrainingLevel),
   price: z.number().nonnegative({ message: '価格は0以上である必要があります' }),
   status: z.nativeEnum(TrainingStatus).default(TrainingStatus.DRAFT),
+  cancelReason: z.string().optional(),
   createdAt: z.date(),
   updatedAt: z.date()
 });
@@ -99,6 +101,13 @@ export function updateTrainingStatus(training: Training, newStatus: TrainingStat
     };
   }
   
+  if (training.status === TrainingStatus.CANCELED) {
+    return {
+      success: false,
+      error: '中止状態の研修は変更できません'
+    };
+  }
+  
   // 更新処理
   const updatedTraining = {
     ...training,
@@ -108,6 +117,60 @@ export function updateTrainingStatus(training: Training, newStatus: TrainingStat
   
   // スキーマ検証
   const result = TrainingSchema.safeParse(updatedTraining);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error.errors[0]?.message || 'Validation error'
+    };
+  }
+  
+  return {
+    success: true,
+    value: result.data
+  };
+}
+
+export function cancelTraining(training: Training, reason: string): Result<Training> {
+  // 中止理由のバリデーション
+  if (!reason) {
+    return {
+      success: false,
+      error: '中止理由は必須です'
+    };
+  }
+  
+  if (reason.length < 5) {
+    return {
+      success: false,
+      error: '中止理由は5文字以上である必要があります'
+    };
+  }
+  
+  // 状態チェック
+  if (training.status === TrainingStatus.COMPLETED) {
+    return {
+      success: false,
+      error: '開催済み状態の研修は中止にできません'
+    };
+  }
+  
+  if (training.status === TrainingStatus.CANCELED) {
+    return {
+      success: false,
+      error: 'すでに中止済みの研修です'
+    };
+  }
+  
+  // 中止処理
+  const canceledTraining = {
+    ...training,
+    status: TrainingStatus.CANCELED,
+    cancelReason: reason,
+    updatedAt: new Date()
+  };
+  
+  // スキーマ検証
+  const result = TrainingSchema.safeParse(canceledTraining);
   if (!result.success) {
     return {
       success: false,
