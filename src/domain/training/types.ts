@@ -29,16 +29,16 @@ export const TrainingStatusFactory = {
 };
 
 // 状態の型ガードを定義
-export const isStatusDraft = (status: TrainingStatus): status is { type: 'DRAFT' } => 
+export const isStatusDraft = (status: TrainingStatus): status is { type: 'DRAFT' } =>
   status.type === 'DRAFT';
 
-export const isStatusOpen = (status: TrainingStatus): status is { type: 'OPEN' } => 
+export const isStatusOpen = (status: TrainingStatus): status is { type: 'OPEN' } =>
   status.type === 'OPEN';
 
-export const isStatusCompleted = (status: TrainingStatus): status is { type: 'COMPLETED' } => 
+export const isStatusCompleted = (status: TrainingStatus): status is { type: 'COMPLETED' } =>
   status.type === 'COMPLETED';
 
-export const isStatusCanceled = (status: TrainingStatus): status is { type: 'CANCELED'; reason: string } => 
+export const isStatusCanceled = (status: TrainingStatus): status is { type: 'CANCELED'; reason: string } =>
   status.type === 'CANCELED';
 
 // バリデーション用のZodスキーマを定義
@@ -46,9 +46,10 @@ const TrainingStatusSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('DRAFT') }),
   z.object({ type: z.literal('OPEN') }),
   z.object({ type: z.literal('COMPLETED') }),
-  z.object({ 
-    type: z.literal('CANCELED'), 
-    reason: z.string().min(5, { message: '中止理由は5文字以上である必要があります' })
+  z.object({
+    type: z.literal('CANCELED'),
+    reason: z.string().min(1, { message: '中止理由は必須です' })
+          .min(5, { message: '中止理由は5文字以上である必要があります' })
   })
 ]);
 
@@ -110,7 +111,7 @@ export function createTraining(input: CreateTrainingInput): Result<Training> {
 
 export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'OPEN' | 'COMPLETED'): Result<Training> {
   const currentStatus = training.status.type;
-  
+
   // 同じ状態への更新は何もせずに成功を返す
   if (currentStatus === newStatus) {
     return {
@@ -118,7 +119,7 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
       value: training
     };
   }
-  
+
   // 状態遷移の検証
   if (currentStatus === 'DRAFT' && newStatus === 'COMPLETED') {
     return {
@@ -126,24 +127,24 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
       error: 'ドラフト状態から開催済み状態に直接更新することはできません'
     };
   }
-  
+
   if (currentStatus === 'COMPLETED') {
     return {
       success: false,
       error: '開催済み状態から変更することはできません'
     };
   }
-  
+
   if (currentStatus === 'CANCELED') {
     return {
       success: false,
       error: '中止状態の研修は変更できません'
     };
   }
-  
+
   // 新しい状態オブジェクトを生成
   let updatedStatus: TrainingStatus;
-  
+
   switch (newStatus) {
     case 'DRAFT':
       updatedStatus = TrainingStatusFactory.draft();
@@ -160,14 +161,14 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
         error: '不正な状態が指定されました'
       };
   }
-  
+
   // 更新処理
   const updatedTraining = {
     ...training,
     status: updatedStatus,
     updatedAt: new Date()
   };
-  
+
   // スキーマ検証
   const result = TrainingSchema.safeParse(updatedTraining);
   if (!result.success) {
@@ -176,7 +177,7 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
       error: result.error.errors[0]?.message || 'Validation error'
     };
   }
-  
+
   return {
     success: true,
     value: result.data
@@ -184,7 +185,7 @@ export function updateTrainingStatus(training: Training, newStatus: 'DRAFT' | 'O
 }
 
 export function cancelTraining(training: Training, reason: string): Result<Training> {
-  // 中止理由のバリデーション - 必須チェックは明示的に行い、長さチェックはZodスキーマに任せる
+  // 空文字チェックを明示的に行う
   if (!reason) {
     return {
       success: false,
@@ -199,14 +200,14 @@ export function cancelTraining(training: Training, reason: string): Result<Train
       error: '開催済み状態の研修は中止にできません'
     };
   }
-  
+
   if (training.status.type === 'CANCELED') {
     return {
       success: false,
       error: 'すでに中止済みの研修です'
     };
   }
-  
+
   // 中止処理
   const now = new Date();
   const canceledTraining = {
@@ -214,7 +215,7 @@ export function cancelTraining(training: Training, reason: string): Result<Train
     status: TrainingStatusFactory.canceled(reason),
     updatedAt: now
   };
-  
+
   // スキーマ検証
   const result = TrainingSchema.safeParse(canceledTraining);
   if (!result.success) {
@@ -223,7 +224,7 @@ export function cancelTraining(training: Training, reason: string): Result<Train
       error: result.error.errors[0]?.message || 'Validation error'
     };
   }
-  
+
   return {
     success: true,
     value: result.data
